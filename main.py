@@ -63,9 +63,9 @@ GRADE_RATIOS = {
     },
 }
 
-# 탐구1, 탐구2는 국어와 수학 비율의 중간치(산술평균)로 세팅
+# 탐구1, 탐구2는 국어와 영어 비율의 중간치(산술평균)로 세팅
 GRADE_RATIOS["탐구1"] = {
-    g: round((GRADE_RATIOS["국어"][g] + GRADE_RATIOS["수학"][g]) / 2, 2)
+    g: round((GRADE_RATIOS["국어"][g] + GRADE_RATIOS["영어"][g]) / 2, 2)
     for g in range(1, 10)
 }
 GRADE_RATIOS["탐구2"] = GRADE_RATIOS["탐구1"].copy()

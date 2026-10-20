@@ -4,6 +4,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+# Streamlit Cloud 리눅스 서버의 한글 폰트 설정
+plt.rcParams["font.family"] = "NanumGothic"
+plt.rcParams["axes.unicode_minus"] = False
+
 st.set_page_config(
     page_title="수능 예측 분석",
     page_icon="📊",

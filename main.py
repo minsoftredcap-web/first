@@ -6,12 +6,17 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import streamlit as st
 
-# Streamlit Cloud 리눅스 서버의 한글 폰트 설정
-# 나눔고딕이 시스템에 설치되어 있다고 가정하고 폰트 설정 적용
+
+# 맷플롯립 폰트 설정 (나눔고딕 지정)
 plt.rcParams["font.family"] = "NanumGothic"
 plt.rcParams["axes.unicode_minus"] = False
-fm._load_fontmanager(try_read_cache=False)
 
+# 폰트 캐시 강제 리프레시 (리눅스 서버 환경 대응)
+try:
+  fm._load_fontmanager(try_read_cache=False)
+except Exception:
+  pass
+    
 st.set_page_config(
     page_title="수능 예측 분석",
     page_icon="📊",

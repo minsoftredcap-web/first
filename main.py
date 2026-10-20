@@ -1,12 +1,12 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-import streamlit as st
 
-# 리눅스 서버(Streamlit Cloud)의 나눔고딕 경로 직접 지정
+# --------------------------------------------------
+# 리눅스 서버(Streamlit Cloud) 한글 폰트 설정 (최상단 고정)
+# --------------------------------------------------
 font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
 
 try:
@@ -16,21 +16,17 @@ except Exception:
     plt.rcParams["font.family"] = "sans-serif"
 
 plt.rcParams["axes.unicode_minus"] = False
-    
+
 st.set_page_config(
     page_title="수능 예측 분석",
     page_icon="📊",
     layout="wide"
 )
 
-plt.rcParams["font.family"] = ["Malgun Gothic", "DejaVu Sans"]
-plt.rcParams["axes.unicode_minus"] = False
-
 SUBJECTS = ["국어", "수학", "영어", "탐구1", "탐구2"]
 EXAMS = ["고2 3월", "고2 6월", "고2 9월", "고2 10월"]
 
 # 등급별 대표 백분위 추정값
-# 실제 백분위가 아니라 계산을 위한 근사값
 GRADE_PERCENTILE = {
     1: 98.0,
     2: 92.5,

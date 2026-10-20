@@ -6,16 +6,16 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import streamlit as st
 
+# 리눅스 서버(Streamlit Cloud)의 나눔고딕 경로 직접 지정
+font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
 
-# 맷플롯립 폰트 설정 (나눔고딕 지정)
-plt.rcParams["font.family"] = "NanumGothic"
-plt.rcParams["axes.unicode_minus"] = False
-
-# 폰트 캐시 강제 리프레시 (리눅스 서버 환경 대응)
 try:
-  fm._load_fontmanager(try_read_cache=False)
+    font_name = fm.FontProperties(fname=font_path).get_name()
+    plt.rcParams["font.family"] = font_name
 except Exception:
-  pass
+    plt.rcParams["font.family"] = "sans-serif"
+
+plt.rcParams["axes.unicode_minus"] = False
     
 st.set_page_config(
     page_title="수능 예측 분석",

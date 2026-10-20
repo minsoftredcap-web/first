@@ -26,7 +26,7 @@ st.set_page_config(
 SUBJECTS = ["국어", "수학", "영어", "탐구1", "탐구2"]
 EXAMS = ["고2 3월", "고2 6월", "고2 9월", "고2 10월"]
 
-# 등급별 대표 백분위 추정값
+# 등급별 대표 백분위 추정값 (국/수/탐용)
 GRADE_PERCENTILE = {
     1: 98.0,
     2: 92.5,
@@ -39,7 +39,33 @@ GRADE_PERCENTILE = {
     9: 2.0
 }
 
-# 가정에 따른 시험별 가중치
+# 영어 등급별 기준 점수 (절대평가)
+ENGLISH_GRADE_CUTOFF = {
+    1: 90,
+    2: 80,
+    3: 70,
+    4: 60,
+    5: 50,
+    6: 40,
+    7: 30,
+    8: 20,
+    9: 0
+}
+
+# 영어 등급별 가상 점수 매핑 (가중 평균 계산용)
+ENGLISH_GRADE_SCORE = {
+    1: 95.0,
+    2: 85.0,
+    3: 75.0,
+    4: 65.0,
+    5: 55.0,
+    6: 45.0,
+    7: 35.0,
+    8: 25.0,
+    9: 15.0
+}
+
+# 요청하신 시험별 가중치 (3모 10%, 6모 20%, 9모 30%, 10모 40%)
 EXAM_WEIGHTS = {
     "고2 3월": 0.10,
     "고2 6월": 0.20,
@@ -68,6 +94,26 @@ def percentile_to_grade(p):
     return 9
 
 
+def score_to_english_grade(score):
+    if score >= 90:
+        return 1
+    elif score >= 80:
+        return 2
+    elif score >= 70:
+        return 3
+    elif score >= 60:
+        return 4
+    elif score >= 50:
+        return 5
+    elif score >= 40:
+        return 6
+    elif score >= 30:
+        return 7
+    elif score >= 20:
+        return 8
+    return 9
+
+
 def calculate_base_percentile(grades):
     """응시한 시험의 등급을 가중 평균하여 기준값 계산"""
     valid = [
@@ -89,19 +135,30 @@ def calculate_base_percentile(grades):
     ) / total_weight
 
 
-def predict_percentile(base, grad_share, grad_advantage,
-                       growth, subject):
-    """
-    단순 가정 기반 시나리오.
-    grad_advantage: 재수생 성적 우위를 백분위 포인트로 가정.
-    growth: 고2 이후 본인의 실력 변화를 백분위 포인트로 가정.
-    """
+def calculate_base_english(grades):
+    """영어 가중 평균 점수 계산"""
+    valid = [
+        (exam, grades[exam])
+        for exam in EXAMS
+        if grades.get(exam) is not None
+    ]
 
-    if subject == "영어":
-        # 영어는 절대평가이므로 재수생 비율로 직접 등급을 깎지 않음
+    if not valid:
         return None
 
-    # 상위권일수록 경쟁 압력이 커진다는 가정
+    total_weight = sum(
+        EXAM_WEIGHTS[exam] for exam, _ in valid
+    )
+
+    return sum(
+        ENGLISH_GRADE_SCORE[grade] * EXAM_WEIGHTS[exam]
+        for exam, grade in valid
+    ) / total_weight
+
+
+def predict_percentile(base, grad_share, grad_advantage,
+                       growth, subject):
+    """국어, 수학, 탐구 백분위 예측"""
     if base >= 90:
         factor = 1.2
     elif base >= 80:
@@ -116,6 +173,13 @@ def predict_percentile(base, grad_share, grad_advantage,
     predicted = base + growth - competition_penalty
 
     return max(0.0, min(100.0, predicted))
+
+
+def predict_english(base_score, growth_english):
+    """영어 점수 예측 (절대평가 고려)"""
+    # 영어는 재수생 경쟁 패널티를 직접 적용하지 않고 실력 변화(growth)만 반영
+    predicted_score = base_score + (growth_english * 1.5)
+    return max(0.0, min(100.0, predicted_score))
 
 
 st.title("📊 고2 성적으로 수능 예상하기")
@@ -165,8 +229,7 @@ with st.form("score_form"):
         max_value=50,
         value=33,
         step=1,
-        help="2026학년도 실제 비율을 참고한 기본값입니다. "
-             "미래 수능 비율을 의미하지는 않습니다."
+        help="2026학년도 실제 비율을 참고한 기본값입니다."
     ) / 100
 
     grad_advantage = st.slider(
@@ -175,18 +238,16 @@ with st.form("score_form"):
         max_value=20,
         value=10,
         step=1,
-        help="재수생이 현재 학생보다 상대적으로 강하다는 "
-             "가정을 수치화한 값입니다. 공식 통계 추정치는 아닙니다."
+        help="재수생이 현재 학생보다 상대적으로 강하다는 가정입니다."
     )
 
     growth_mid = st.slider(
-        "고2 이후 본인의 실력 변화 가정 (백분위 포인트)",
+        "고2 이후 본인의 실력 변화 가정 (백분위/점수 포인트)",
         min_value=-10,
         max_value=10,
         value=2,
         step=1,
-        help="공부량, 약점 보완 및 시험 적응에 따른 "
-             "가상의 변화를 설정합니다."
+        help="공부량, 약점 보완 및 시험 적응에 따른 가상의 변화를 설정합니다."
     )
 
     submitted = st.form_submit_button(
@@ -225,30 +286,28 @@ if submitted:
             for exam in EXAMS
         }
 
+        # 영어 과목 예측 로직 처리
         if subject == "영어":
-            # 절대평가: 가장 최근 응시 등급 표시
-            valid = [
-                scores[exam][subject]
-                for exam in EXAMS
-                if scores[exam][subject] is not None
-            ]
-
-            if not valid:
+            base_score = calculate_base_english(subject_grades)
+            if base_score is None:
                 continue
+            
+            base_values[subject] = base_score
+            row = {"과목": subject, "기준 점수(추정)": round(base_score, 1)}
 
-            latest_grade = valid[-1]
-
-            row = {
-                "과목": subject,
-                "기준값": f"최근 {latest_grade}등급",
-                "보수적": f"{latest_grade}등급",
-                "중간": f"{latest_grade}등급",
-                "낙관적": f"{latest_grade}등급"
-            }
+            for scenario, setting in scenario_settings.items():
+                pred_score = predict_english(
+                    base_score=base_score,
+                    growth_english=growth_mid + setting["growth_delta"]
+                )
+                pred_grade = score_to_english_grade(pred_score)
+                row[scenario] = f"{pred_grade}등급"
+                row[f"{scenario} 점수"] = round(pred_score, 1)
 
             results.append(row)
             continue
 
+        # 국어, 수학, 탐구1, 탐구2 예측 로직
         base = calculate_base_percentile(subject_grades)
 
         if base is None:
@@ -323,21 +382,28 @@ if submitted:
                 values = []
 
                 for subject in graph_subjects:
-                    base = base_values[subject]
                     setting = scenario_settings[scenario]
-
-                    p = predict_percentile(
-                        base=base,
-                        grad_share=grad_share,
-                        grad_advantage=(
-                            grad_advantage
-                            * setting["advantage_multiplier"]
-                        ),
-                        growth=growth_mid + setting["growth_delta"],
-                        subject=subject
-                    )
-
-                    values.append(percentile_to_grade(p))
+                    
+                    if subject == "영어":
+                        base_score = base_values[subject]
+                        p_score = predict_english(
+                            base_score=base_score,
+                            growth_english=growth_mid + setting["growth_delta"]
+                        )
+                        values.append(score_to_english_grade(p_score))
+                    else:
+                        base = base_values[subject]
+                        p = predict_percentile(
+                            base=base,
+                            grad_share=grad_share,
+                            grad_advantage=(
+                                grad_advantage
+                                * setting["advantage_multiplier"]
+                            ),
+                            growth=growth_mid + setting["growth_delta"],
+                            subject=subject
+                        )
+                        values.append(percentile_to_grade(p))
 
                 ax.bar(
                     x + (i - 1) * width,
@@ -352,7 +418,7 @@ if submitted:
             ax.set_yticks(range(1, 10))
             ax.set_ylim(9.5, 0.5)
             ax.set_ylabel("예상 등급 (위쪽이 1등급)")
-            ax.set_title("재수생 경쟁 및 학습 변화 가정별 비교")
+            ax.set_title("재수생 경쟁 및 학습 변화 가정별 비교 (가중치: 3모 10%, 6모 20%, 9모 30%, 10모 40%)")
             ax.legend()
             ax.grid(axis="y", alpha=0.25)
 

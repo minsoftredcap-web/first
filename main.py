@@ -1,5 +1,5 @@
 import matplotlib.font_manager as fm
-import matplotlib.pyplot as plt
+import matplotlib.plt as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -24,67 +24,18 @@ st.set_page_config(
 SUBJECTS = ["국어", "수학", "영어", "탐구1", "탐구2"]
 EXAMS = ["고2 3월", "고2 6월", "고2 9월", "고2 10월"]
 
-# --------------------------------------------------
-# 과목별/등급별 비율(%) 설정
-# --------------------------------------------------
-GRADE_RATIOS = {
-    "국어": {
-        1: 2.9,
-        2: 5.0,
-        3: 9.5,
-        4: 15.2,
-        5: 19.1,
-        6: 19.0,
-        7: 15.2,
-        8: 9.6,
-        9: 4.5,
-    },
-    "수학": {
-        1: 2.2,
-        2: 5.0,
-        3: 10.5,
-        4: 16.3,
-        5: 18.2,
-        6: 20.8,
-        7: 15.6,
-        8: 7.2,
-        9: 4.2,
-    },
-    "영어": {
-        1: 4.7,
-        2: 13.6,
-        3: 19.4,
-        4: 21.3,
-        5: 16.6,
-        6: 10.9,
-        7: 7.0,
-        8: 5.1,
-        9: 1.3,
-    },
+# 영어 등급별 가상 점수 매핑 (가중 평균 계산용)
+ENGLISH_GRADE_SCORE = {
+    1: 95.0,
+    2: 85.0,
+    3: 75.0,
+    4: 65.0,
+    5: 55.0,
+    6: 45.0,
+    7: 35.0,
+    8: 25.0,
+    9: 15.0,
 }
-
-# 탐구1, 탐구2는 국어와 영어 비율의 중간치(산술평균)로 세팅
-GRADE_RATIOS["탐구1"] = {
-    g: round((GRADE_RATIOS["국어"][g] + GRADE_RATIOS["영어"][g]) / 2, 2)
-    for g in range(1, 10)
-}
-GRADE_RATIOS["탐구2"] = GRADE_RATIOS["탐구1"].copy()
-
-
-def get_grade_percentile_map(subject):
-  """등급별 비율을 기반으로 해당 등급의 대표 백분위(100 - 중간 누적상위%) 계산"""
-  ratios = GRADE_RATIOS[subject]
-  percentile_map = {}
-  cum_sum = 0.0
-
-  for grade in range(1, 10):
-    r = ratios[grade]
-    mid_cum = cum_sum + (r / 2.0)  # 해당 등급 구간의 중간 누적 상위 %
-    percentile_map[grade] = max(0.0, min(100.0, 100.0 - mid_cum))
-    cum_sum += r
-
-  return percentile_map
-
 
 # 시험별 가중치 (3모 10%, 6모 20%, 9모 30%, 10모 40%)
 EXAM_WEIGHTS = {
@@ -95,21 +46,68 @@ EXAM_WEIGHTS = {
 }
 
 
-def percentile_to_grade(p, subject="국어"):
-  """백분율(백분위)을 해당 과목의 등급 비율 매핑에 맞춰 환산"""
-  top_p = 100.0 - p  # 상위 %
-  ratios = GRADE_RATIOS.get(subject, GRADE_RATIOS["국어"])
-
-  cum_sum = 0.0
-  for grade in range(1, 10):
-    cum_sum += ratios[grade]
-    if top_p <= cum_sum:
-      return grade
+def percentile_to_grade(p):
+  """백분위를 수능 등급으로 환산"""
+  if p >= 96:
+    return 1
+  elif p >= 89:
+    return 2
+  elif p >= 77:
+    return 3
+  elif p >= 60:
+    return 4
+  elif p >= 40:
+    return 5
+  elif p >= 23:
+    return 6
+  elif p >= 11:
+    return 7
+  elif p >= 4:
+    return 8
   return 9
 
 
-def calculate_base_percentile(grades, subject):
-  """응시한 시험의 등급을 입력받아 과목별 비율 기반 백분위 가중평균 산출"""
+def score_to_english_grade(score):
+  """영어 점수를 절대평가 등급으로 환산"""
+  if score >= 90:
+    return 1
+  elif score >= 80:
+    return 2
+  elif score >= 70:
+    return 3
+  elif score >= 60:
+    return 4
+  elif score >= 50:
+    return 5
+  elif score >= 40:
+    return 6
+  elif score >= 30:
+    return 7
+  elif score >= 20:
+    return 8
+  return 9
+
+
+def calculate_base_percentile(percentiles):
+  """응시한 시험의 백분율(백분위)을 가중 평균하여 기준값 계산"""
+  valid = [
+      (exam, percentiles[exam])
+      for exam in EXAMS
+      if percentiles.get(exam) is not None
+  ]
+
+  if not valid:
+    return None
+
+  total_weight = sum(EXAM_WEIGHTS[exam] for exam, _ in valid)
+
+  return (
+      sum(p * EXAM_WEIGHTS[exam] for exam, p in valid) / total_weight
+  )
+
+
+def calculate_base_english(grades):
+  """영어 가중 평균 점수 계산"""
   valid = [
       (exam, grades[exam]) for exam in EXAMS if grades.get(exam) is not None
   ]
@@ -117,17 +115,16 @@ def calculate_base_percentile(grades, subject):
   if not valid:
     return None
 
-  p_map = get_grade_percentile_map(subject)
   total_weight = sum(EXAM_WEIGHTS[exam] for exam, _ in valid)
 
   return (
-      sum(p_map[grade] * EXAM_WEIGHTS[exam] for exam, grade in valid)
+      sum(ENGLISH_GRADE_SCORE[grade] * EXAM_WEIGHTS[exam] for exam, grade in valid)
       / total_weight
   )
 
 
-def predict_percentile(base, grad_share, grad_advantage, growth):
-  """백분위 예측 로직"""
+def predict_percentile(base, grad_share, grad_advantage, growth, subject):
+  """국어, 수학, 탐구 백분위 예측"""
   if base >= 90:
     factor = 1.2
   elif base >= 80:
@@ -141,20 +138,27 @@ def predict_percentile(base, grad_share, grad_advantage, growth):
   return max(0.0, min(100.0, predicted))
 
 
+def predict_english(base_score, growth_english):
+  """영어 점수 예측 (절대평가 고려)"""
+  predicted_score = base_score + (growth_english * 1.5)
+  return max(0.0, min(100.0, predicted_score))
+
+
 # --------------------------------------------------
-# 메인 UI
+# 메인UI 시작
 # --------------------------------------------------
 
 st.title("📊 고2 성적으로 수능 예상하기")
 
 st.write(
-    "과목별 등급 비율(국/수/영/탐) 데이터를 적용하여 고3 수능"
-    " 성적을 시나리오별로 예측합니다."
+    "고2 모의고사 성적(국/수/탐은 백분위, 영어는 등급)과 재수생 유입"
+    " 가정을 이용해 고3 수능 성적을 시나리오별로 계산합니다."
 )
 
 st.warning(
-    "이 프로그램은 입력하신 과목별 등급 비율 분포 및 가정을 바탕으로"
-    " 추정하는 모델입니다."
+    "이 프로그램은 실제 수능 결과로 검증된 예측 모델이 아닙니다. "
+    "가중치, 재수생 경쟁 압력 및 향후 실력 변화는 사용자가 설정한"
+    " 가정입니다."
 )
 
 # --------------------------------------------------
@@ -163,8 +167,8 @@ st.warning(
 
 st.header("1. 고2 모의고사 성적 입력")
 st.caption(
-    "※ 각 시험별로 취득한 **등급(1~9등급)**을 선택하세요. 미응시 시"
-    " '미응시'를 선택합니다."
+    "※ 영어는 **등급(1~9)**을 선택하고, 나머지 과목은 **백분위(0~100)**를"
+    " 입력하세요. 미응시 시 빈칸으로 두거나 0을 유지하세요."
 )
 
 with st.form("score_form"):
@@ -177,12 +181,27 @@ with st.form("score_form"):
 
     for i, subject in enumerate(SUBJECTS):
       with cols[i]:
-        grade = st.selectbox(
-            f"{subject}",
-            ["미응시"] + list(range(1, 10)),
-            key=f"{exam}_{subject}",
-        )
-        scores[exam][subject] = None if grade == "미응시" else grade
+        if subject == "영어":
+          # 영어는 등급 선택 Box
+          grade = st.selectbox(
+              f"{subject} (등급)",
+              ["미응시"] + list(range(1, 10)),
+              key=f"{exam}_{subject}",
+          )
+          scores[exam][subject] = None if grade == "미응시" else grade
+        else:
+          # 국/수/탐은 백분위 Number Input
+          val = st.number_input(
+              f"{subject} (백분위 %)",
+              min_value=0.0,
+              max_value=100.0,
+              value=None,
+              step=0.1,
+              format="%.1f",
+              key=f"{exam}_{subject}",
+              help="미응시한 경우 비워두세요.",
+          )
+          scores[exam][subject] = val
 
   st.header("2. 재수생 유입 및 학습 변화 가정")
 
@@ -208,7 +227,7 @@ with st.form("score_form"):
   )
 
   growth_mid = st.slider(
-      "고2 이후 본인의 실력 변화 가정 (백분위 포인트)",
+      "고2 이후 본인의 실력 변화 가정 (백분위/점수 포인트)",
       min_value=-10,
       max_value=10,
       value=2,
@@ -239,20 +258,37 @@ if submitted:
   base_values = {}
 
   for subject in SUBJECTS:
-    subject_grades = {exam: scores[exam][subject] for exam in EXAMS}
+    subject_scores = {exam: scores[exam][subject] for exam in EXAMS}
 
-    base_p = calculate_base_percentile(subject_grades, subject)
+    # 영어 과목 예측 로직 (등급 기반 처리)
+    if subject == "영어":
+      base_score = calculate_base_english(subject_scores)
+      if base_score is None:
+        continue
+
+      base_values[subject] = base_score
+      row = {"과목": subject, "기준 성적(추정)": f"{round(base_score, 1)}점"}
+
+      for scenario, setting in scenario_settings.items():
+        pred_score = predict_english(
+            base_score=base_score,
+            growth_english=growth_mid + setting["growth_delta"],
+        )
+        pred_grade = score_to_english_grade(pred_score)
+        row[scenario] = f"{pred_grade}등급 ({round(pred_score, 1)}점)"
+
+      results.append(row)
+      continue
+
+    # 국어, 수학, 탐구1, 탐구2 예측 로직 (백분위 기반 처리)
+    base_p = calculate_base_percentile(subject_scores)
 
     if base_p is None:
       continue
 
     base_values[subject] = base_p
 
-    row = {
-        "과목": subject,
-        "기준 백분위(추정)": f"{round(base_p, 1)}%",
-        "기준 등급(추정)": f"{percentile_to_grade(base_p, subject)}등급",
-    }
+    row = {"과목": subject, "기준 성적(추정)": f"백분위 {round(base_p, 1)}%"}
 
     for scenario, setting in scenario_settings.items():
       predicted_p = predict_percentile(
@@ -262,9 +298,10 @@ if submitted:
               grad_advantage * setting["advantage_multiplier"]
           ),
           growth=growth_mid + setting["growth_delta"],
+          subject=subject,
       )
 
-      predicted_grade = percentile_to_grade(predicted_p, subject)
+      predicted_grade = percentile_to_grade(predicted_p)
       row[scenario] = (
           f"{predicted_grade}등급 (백분위 {round(predicted_p, 1)}%)"
       )
@@ -280,15 +317,15 @@ if submitted:
     st.dataframe(df, use_container_width=True, hide_index=True)
 
     st.caption(
-        "보수적·중간·낙관적 결과는 설정하신 과목별 등급 비율 분포 및"
-        " 시나리오 가정을 적용한 계산 결과입니다."
+        "보수적·중간·낙관적 결과는 통계적 신뢰구간이 아닙니다. "
+        "서로 다른 가정을 적용한 계산 결과입니다."
     )
 
     # ------------------------------------------
-    # 3. 시나리오별 백분위 비교 그래프
+    # 3. 시나리오별 백분위/등급 그래프
     # ------------------------------------------
 
-    st.header("4. 시나리오별 예상 백분위 비교")
+    st.header("4. 시나리오별 예상 백분위 비교 (영어는 예상 점수)")
 
     graph_subjects = list(base_values.keys())
 
@@ -305,16 +342,26 @@ if submitted:
 
         for subject in graph_subjects:
           setting = scenario_settings[scenario]
-          base = base_values[subject]
-          p = predict_percentile(
-              base=base,
-              grad_share=grad_share,
-              grad_advantage=(
-                  grad_advantage * setting["advantage_multiplier"]
-              ),
-              growth=growth_mid + setting["growth_delta"],
-          )
-          values.append(p)
+
+          if subject == "영어":
+            base_score = base_values[subject]
+            p_score = predict_english(
+                base_score=base_score,
+                growth_english=growth_mid + setting["growth_delta"],
+            )
+            values.append(p_score)  # 영어는 예상 점수로 표시
+          else:
+            base = base_values[subject]
+            p = predict_percentile(
+                base=base,
+                grad_share=grad_share,
+                grad_advantage=(
+                    grad_advantage * setting["advantage_multiplier"]
+                ),
+                growth=growth_mid + setting["growth_delta"],
+                subject=subject,
+            )
+            values.append(p)  # 국/수/탐은 백분위 수치로 표시
 
         rects = ax.bar(
             x + (i - 1) * width,
@@ -328,7 +375,7 @@ if submitted:
         for rect in rects:
           height = rect.get_height()
           ax.annotate(
-              f"{height:.1f}%",
+              f"{height:.1f}",
               xy=(rect.get_x() + rect.get_width() / 2, height),
               xytext=(0, 3),
               textcoords="offset points",
@@ -340,7 +387,7 @@ if submitted:
       ax.set_xticks(x)
       ax.set_xticklabels(graph_subjects)
       ax.set_ylim(0, 110)
-      ax.set_ylabel("예상 백분위 (%)")
+      ax.set_ylabel("예상 백분위 / 점수 (%)")
       ax.set_title(
           "재수생 경쟁 및 학습 변화 가정별 비교 (가중치: 3모 10%, 6모 20%,"
           " 9모 30%, 10모 40%)"
@@ -364,7 +411,10 @@ if submitted:
 
       for exam in EXAMS:
         val = scores[exam][subject]
-        row[exam] = f"{val}등급" if val is not None else "미응시"
+        if val is None:
+          row[exam] = "미응시"
+        else:
+          row[exam] = f"{val}등급" if subject == "영어" else f"{val}%"
 
       input_rows.append(row)
 
@@ -376,4 +426,10 @@ if submitted:
         data=df.to_csv(index=False).encode("utf-8-sig"),
         file_name="수능_예측결과.csv",
         mime="text/csv",
+    )
+
+    st.info(
+        "실제 수능 등급을 더 정확하게 추정하려면 고3 6월·9월 모의평가의"
+        " 표준점수와 백분위를 추가하고, 과거 모의고사-수능 대응 자료로"
+        " 모델을 검증해야 합니다."
     )

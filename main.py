@@ -126,11 +126,11 @@ def calculate_base_english(grades):
 def predict_percentile(base, grad_share, grad_advantage, growth, subject):
   """국어, 수학, 탐구 백분위 예측"""
   if base >= 90:
-    factor = 1.2
+    factor = 1.0
   elif base >= 80:
     factor = 1.0
   else:
-    factor = 0.7
+    factor = 1.0
 
   competition_penalty = grad_share * grad_advantage * factor
   predicted = base + growth - competition_penalty
